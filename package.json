@@ -5,6 +5,7 @@
   "private": true,
   "devDependencies": {
     "@ethersproject/experimental": "^5.0.1",
+    "@gnosis.pm/safe-apps-react-sdk": "^2.2.0",
     "@popperjs/core": "^2.4.4",
     "@reach/dialog": "^0.10.3",
     "@reach/portal": "^0.10.3",
@@ -64,7 +65,7 @@
     "polished": "^3.3.2",
     "prettier": "^1.17.0",
     "qs": "^6.9.4",
-    "react": "^16.13.1",
+    "react": "^16.14.0",
     "react-confetti": "^6.0.0",
     "react-device-detect": "^1.6.2",
     "react-dom": "^16.13.1",
@@ -122,6 +123,7 @@
   },
   "license": "GPL-3.0-or-later",
   "dependencies": {
+    "@gnosis.pm/safe-apps-web3-react": "^0.1.2",
     "@uniswap/default-token-list": "^2.0.0"
   }
 }

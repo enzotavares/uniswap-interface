@@ -3,6 +3,7 @@ import { InjectedConnector } from '@web3-react/injected-connector'
 import { WalletConnectConnector } from '@web3-react/walletconnect-connector'
 import { WalletLinkConnector } from '@web3-react/walletlink-connector'
 import { PortisConnector } from '@web3-react/portis-connector'
+import { SafeAppConnector } from '@gnosis.pm/safe-apps-web3-react'
 
 import { FortmaticConnector } from './Fortmatic'
 import { NetworkConnector } from './NetworkConnector'
@@ -58,3 +59,5 @@ export const walletlink = new WalletLinkConnector({
   appName: 'Uniswap',
   appLogoUrl: UNISWAP_LOGO_URL
 })
+
+export const gnosis = new SafeAppConnector()
