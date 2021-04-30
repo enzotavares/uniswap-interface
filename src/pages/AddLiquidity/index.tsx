@@ -1,5 +1,5 @@
 import { BigNumber } from '@ethersproject/bignumber'
-import { TransactionResponse } from '@ethersproject/providers'
+// import { TransactionResponse } from '@ethersproject/providers'
 import { Currency, currencyEquals, ETHER, TokenAmount, WETH } from '@uniswap/sdk'
 import React, { useCallback, useContext, useState } from 'react'
 import { Plus } from 'react-feather'
@@ -21,13 +21,12 @@ import { ROUTER_ADDRESS } from '../../constants'
 import { PairState } from '../../data/Reserves'
 import { useActiveWeb3React } from '../../hooks'
 import { useCurrency } from '../../hooks/Tokens'
-import { ApprovalState, useApproveCallback } from '../../hooks/useApproveCallback'
 import useTransactionDeadline from '../../hooks/useTransactionDeadline'
 import { useWalletModalToggle } from '../../state/application/hooks'
 import { Field } from '../../state/mint/actions'
 import { useDerivedMintInfo, useMintActionHandlers, useMintState } from '../../state/mint/hooks'
 
-import { useTransactionAdder } from '../../state/transactions/hooks'
+// import { useTransactionAdder } from '../../state/transactions/hooks'
 import { useIsExpertMode, useUserSlippageTolerance } from '../../state/user/hooks'
 import { TYPE } from '../../theme'
 import { calculateGasMargin, calculateSlippageAmount, getRouterContract } from '../../utils'
@@ -40,6 +39,8 @@ import { currencyId } from '../../utils/currencyId'
 import { PoolPriceBar } from './PoolPriceBar'
 import { useIsTransactionUnsupported } from 'hooks/Trades'
 import UnsupportedCurrencyFooter from 'components/swap/UnsupportedCurrencyFooter'
+import { ApprovalState, useApproveTransaction } from 'hooks/useApproveTransaction'
+import { useSafeAppsSDK } from '@gnosis.pm/safe-apps-react-sdk'
 
 export default function AddLiquidity({
   match: {
@@ -49,6 +50,7 @@ export default function AddLiquidity({
 }: RouteComponentProps<{ currencyIdA?: string; currencyIdB?: string }>) {
   const { account, chainId, library } = useActiveWeb3React()
   const theme = useContext(ThemeContext)
+  const { sdk } = useSafeAppsSDK()
 
   const currencyA = useCurrency(currencyIdA)
   const currencyB = useCurrency(currencyIdB)
@@ -120,10 +122,22 @@ export default function AddLiquidity({
   )
 
   // check whether the user has approved the router on the tokens
-  const [approvalA, approveACallback] = useApproveCallback(parsedAmounts[Field.CURRENCY_A], ROUTER_ADDRESS)
-  const [approvalB, approveBCallback] = useApproveCallback(parsedAmounts[Field.CURRENCY_B], ROUTER_ADDRESS)
+  const [approvalA, approveATransaction] = useApproveTransaction(parsedAmounts[Field.CURRENCY_A], ROUTER_ADDRESS)
+  const [approvalB, approveBTransaction] = useApproveTransaction(parsedAmounts[Field.CURRENCY_B], ROUTER_ADDRESS)
 
-  const addTransaction = useTransactionAdder()
+  const handleApproveA = useCallback(async () => {
+    const approveTx = await approveATransaction()
+    if (approveTx) {
+      sdk.txs.send({ txs: [approveTx] })
+    }
+  }, [approveATransaction, sdk.txs])
+  const handleApproveB = useCallback(async () => {
+    const approveTx = await approveBTransaction()
+    if (approveTx) {
+      sdk.txs.send({ txs: [approveTx] })
+    }
+  }, [approveBTransaction, sdk.txs])
+  // const addTransaction = useTransactionAdder()
 
   async function onAdd() {
     if (!chainId || !library || !account) return
@@ -139,14 +153,10 @@ export default function AddLiquidity({
       [Field.CURRENCY_B]: calculateSlippageAmount(parsedAmountB, noLiquidity ? 0 : allowedSlippage)[0]
     }
 
-    let estimate,
-      method: (...args: any) => Promise<TransactionResponse>,
-      args: Array<string | string[] | number>,
-      value: BigNumber | null
+    let estimate, args: Array<string | string[] | number>, value: BigNumber | null
     if (currencyA === ETHER || currencyB === ETHER) {
       const tokenBIsETH = currencyB === ETHER
       estimate = router.estimateGas.addLiquidityETH
-      method = router.addLiquidityETH
       args = [
         wrappedCurrency(tokenBIsETH ? currencyA : currencyB, chainId)?.address ?? '', // token
         (tokenBIsETH ? parsedAmountA : parsedAmountB).raw.toString(), // token desired
@@ -158,7 +168,6 @@ export default function AddLiquidity({
       value = BigNumber.from((tokenBIsETH ? parsedAmountB : parsedAmountA).raw.toString())
     } else {
       estimate = router.estimateGas.addLiquidity
-      method = router.addLiquidity
       args = [
         wrappedCurrency(currencyA, chainId)?.address ?? '',
         wrappedCurrency(currencyB, chainId)?.address ?? '',
@@ -174,14 +183,35 @@ export default function AddLiquidity({
 
     setAttemptingTxn(true)
     await estimate(...args, value ? { value } : {})
-      .then(estimatedGasLimit =>
-        method(...args, {
-          ...(value ? { value } : {}),
-          gasLimit: calculateGasMargin(estimatedGasLimit)
-        }).then(response => {
+      .then(async estimatedGasLimit => {
+        const functionCall = router.interface.encodeFunctionData(
+          currencyA === ETHER || currencyB === ETHER ? 'addLiquidityETH' : 'addLiquidity',
+          args
+        )
+        const swapTx = {
+          to: router.address,
+          value: value ? value.toString() : '0',
+          data: functionCall,
+          gasLimit: calculateGasMargin(estimatedGasLimit).toString()
+        }
+        const txs = []
+        if (approvalA) {
+          const approvalTx = await approveATransaction()
+          if (approvalTx) {
+            txs.push(approvalTx)
+          }
+        }
+        if (approvalB) {
+          const approvalTx = await approveBTransaction()
+          if (approvalTx) {
+            txs.push(approvalTx)
+          }
+        }
+        txs.push(swapTx)
+        sdk.txs.send({ txs }).then(response => {
           setAttemptingTxn(false)
 
-          addTransaction(response, {
+          /*addTransaction(response, {
             summary:
               'Add ' +
               parsedAmounts[Field.CURRENCY_A]?.toSignificant(3) +
@@ -191,9 +221,9 @@ export default function AddLiquidity({
               parsedAmounts[Field.CURRENCY_B]?.toSignificant(3) +
               ' ' +
               currencies[Field.CURRENCY_B]?.symbol
-          })
+          })*/
 
-          setTxHash(response.hash)
+          setTxHash(response.safeTxHash)
 
           ReactGA.event({
             category: 'Liquidity',
@@ -201,7 +231,7 @@ export default function AddLiquidity({
             label: [currencies[Field.CURRENCY_A]?.symbol, currencies[Field.CURRENCY_B]?.symbol].join('/')
           })
         })
-      )
+      })
       .catch(error => {
         setAttemptingTxn(false)
         // we only care if the error is something _other_ than the user rejected the tx
@@ -308,7 +338,6 @@ export default function AddLiquidity({
   const isCreate = history.location.pathname.includes('/create')
 
   const addIsUnsupported = useIsTransactionUnsupported(currencies?.CURRENCY_A, currencies?.CURRENCY_B)
-
   return (
     <>
       <AppBody>
@@ -424,7 +453,7 @@ export default function AddLiquidity({
                     <RowBetween>
                       {approvalA !== ApprovalState.APPROVED && (
                         <ButtonPrimary
-                          onClick={approveACallback}
+                          onClick={handleApproveA}
                           disabled={approvalA === ApprovalState.PENDING}
                           width={approvalB !== ApprovalState.APPROVED ? '48%' : '100%'}
                         >
@@ -437,7 +466,7 @@ export default function AddLiquidity({
                       )}
                       {approvalB !== ApprovalState.APPROVED && (
                         <ButtonPrimary
-                          onClick={approveBCallback}
+                          onClick={handleApproveB}
                           disabled={approvalB === ApprovalState.PENDING}
                           width={approvalA !== ApprovalState.APPROVED ? '48%' : '100%'}
                         >
@@ -454,11 +483,16 @@ export default function AddLiquidity({
                   onClick={() => {
                     expertMode ? onAdd() : setShowConfirm(true)
                   }}
-                  disabled={!isValid || approvalA !== ApprovalState.APPROVED || approvalB !== ApprovalState.APPROVED}
+                  disabled={!isValid}
                   error={!isValid && !!parsedAmounts[Field.CURRENCY_A] && !!parsedAmounts[Field.CURRENCY_B]}
                 >
                   <Text fontSize={20} fontWeight={500}>
-                    {error ?? 'Supply'}
+                    {error ??
+                      `${
+                        approvalA === ApprovalState.NOT_APPROVED || approvalB === ApprovalState.NOT_APPROVED
+                          ? 'Approve & '
+                          : ''
+                      } Supply`}
                   </Text>
                 </ButtonError>
               </AutoColumn>
