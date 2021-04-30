@@ -25,9 +25,7 @@ import { INITIAL_ALLOWED_SLIPPAGE } from '../../constants'
 import { getTradeVersion } from '../../data/V1'
 import { useActiveWeb3React } from '../../hooks'
 import { useCurrency, useAllTokens } from '../../hooks/Tokens'
-import { ApprovalState, useApproveCallbackFromTrade } from '../../hooks/useApproveCallback'
 import useENSAddress from '../../hooks/useENSAddress'
-import { useSwapCallback } from '../../hooks/useSwapCallback'
 import useToggledVersion, { DEFAULT_VERSION, Version } from '../../hooks/useToggledVersion'
 import useWrapCallback, { WrapType } from '../../hooks/useWrapCallback'
 import { useToggleSettingsMenu, useWalletModalToggle } from '../../state/application/hooks'
@@ -49,10 +47,13 @@ import { useIsTransactionUnsupported } from 'hooks/Trades'
 import UnsupportedCurrencyFooter from 'components/swap/UnsupportedCurrencyFooter'
 import { isTradeBetter } from 'utils/trades'
 import { RouteComponentProps } from 'react-router-dom'
+import { useSafeAppsSDK } from '@gnosis.pm/safe-apps-react-sdk'
+import { ApprovalState, useApproveTransactionFromTrade } from 'hooks/useApproveTransaction'
+import { useSwapTransaction } from 'hooks/useSwapTransaction'
 
 export default function Swap({ history }: RouteComponentProps) {
   const loadedUrlParams = useDefaultsFromURLSearch()
-
+  const { sdk } = useSafeAppsSDK()
   // token warning stuff
   const [loadedInputCurrency, loadedOutputCurrency] = [
     useCurrency(loadedUrlParams?.inputCurrencyId),
@@ -179,7 +180,8 @@ export default function Swap({ history }: RouteComponentProps) {
   const noRoute = !route
 
   // check whether the user has approved the router on the input token
-  const [approval, approveCallback] = useApproveCallbackFromTrade(trade, allowedSlippage)
+  // const [approval, approveCallback] = useApproveCallbackFromTrade(trade, allowedSlippage)
+  const [approval, createApproveTx] = useApproveTransactionFromTrade(trade, allowedSlippage)
 
   // check if user has gone through approval process, used to show two step buttons, reset on token change
   const [approvalSubmitted, setApprovalSubmitted] = useState<boolean>(false)
@@ -194,59 +196,88 @@ export default function Swap({ history }: RouteComponentProps) {
   const maxAmountInput: CurrencyAmount | undefined = maxAmountSpend(currencyBalances[Field.INPUT])
   const atMaxAmountInput = Boolean(maxAmountInput && parsedAmounts[Field.INPUT]?.equalTo(maxAmountInput))
 
-  // the callback to execute the swap
-  const { callback: swapCallback, error: swapCallbackError } = useSwapCallback(trade, allowedSlippage, recipient)
+  // the transaction to execute the swap
+  const { callback: swapTransaction, error: swapTransactionError } = useSwapTransaction(
+    trade,
+    allowedSlippage,
+    recipient
+  )
 
   const { priceImpactWithoutFee } = computeTradePriceBreakdown(trade)
 
   const [singleHopOnly] = useUserSingleHopOnly()
-
-  const handleSwap = useCallback(() => {
+  const handleApprove = useCallback(async () => {
+    const approveTx = await createApproveTx()
+    if (approveTx) {
+      sdk.txs.send({ txs: [approveTx] })
+    }
+  }, [createApproveTx, sdk.txs])
+  const handleSwap = useCallback(async () => {
     if (priceImpactWithoutFee && !confirmPriceImpactWithoutFee(priceImpactWithoutFee)) {
       return
     }
-    if (!swapCallback) {
+    if (!swapTransaction) {
       return
     }
+    const swapTx = swapTransaction ? await swapTransaction() : null
+    const txs = []
     setSwapState({ attemptingTxn: true, tradeToConfirm, showConfirm, swapErrorMessage: undefined, txHash: undefined })
-    swapCallback()
-      .then(hash => {
-        setSwapState({ attemptingTxn: false, tradeToConfirm, showConfirm, swapErrorMessage: undefined, txHash: hash })
+    if (swapTx) {
+      // If coin is not already approved we add it to the transaction batch
+      if (approval === ApprovalState.NOT_APPROVED) {
+        const approveTx = await createApproveTx()
+        txs.push(approveTx)
+      }
+      txs.push(swapTx)
+      sdk.txs
+        .send({ txs: [swapTx] })
+        .then(hash => {
+          setSwapState({
+            attemptingTxn: false,
+            tradeToConfirm,
+            showConfirm,
+            swapErrorMessage: undefined,
+            txHash: hash.safeTxHash
+          })
 
-        ReactGA.event({
-          category: 'Swap',
-          action:
-            recipient === null
-              ? 'Swap w/o Send'
-              : (recipientAddress ?? recipient) === account
-              ? 'Swap w/o Send + recipient'
-              : 'Swap w/ Send',
-          label: [
-            trade?.inputAmount?.currency?.symbol,
-            trade?.outputAmount?.currency?.symbol,
-            getTradeVersion(trade)
-          ].join('/')
-        })
+          ReactGA.event({
+            category: 'Swap',
+            action:
+              recipient === null
+                ? 'Swap w/o Send'
+                : (recipientAddress ?? recipient) === account
+                ? 'Swap w/o Send + recipient'
+                : 'Swap w/ Send',
+            label: [
+              trade?.inputAmount?.currency?.symbol,
+              trade?.outputAmount?.currency?.symbol,
+              getTradeVersion(trade)
+            ].join('/')
+          })
 
-        ReactGA.event({
-          category: 'Routing',
-          action: singleHopOnly ? 'Swap with multihop disabled' : 'Swap with multihop enabled'
+          ReactGA.event({
+            category: 'Routing',
+            action: singleHopOnly ? 'Swap with multihop disabled' : 'Swap with multihop enabled'
+          })
         })
-      })
-      .catch(error => {
-        setSwapState({
-          attemptingTxn: false,
-          tradeToConfirm,
-          showConfirm,
-          swapErrorMessage: error.message,
-          txHash: undefined
+        .catch(error => {
+          setSwapState({
+            attemptingTxn: false,
+            tradeToConfirm,
+            showConfirm,
+            swapErrorMessage: error.message,
+            txHash: undefined
+          })
         })
-      })
+    }
   }, [
     priceImpactWithoutFee,
-    swapCallback,
+    swapTransaction,
     tradeToConfirm,
     showConfirm,
+    approval,
+    sdk.txs,
+    createApproveTx,
     recipient,
     recipientAddress,
     account,
@@ -430,7 +461,7 @@ export default function Swap({ history }: RouteComponentProps) {
             ) : showApproveFlow ? (
               <RowBetween>
                 <ButtonConfirmed
-                  onClick={approveCallback}
+                  onClick={handleApprove}
                   disabled={approval !== ApprovalState.NOT_APPROVED || approvalSubmitted}
                   width="48%"
                   altDisabledStyle={approval === ApprovalState.PENDING} // show solid button while waiting
@@ -463,14 +494,16 @@ export default function Swap({ history }: RouteComponentProps) {
                   width="48%"
                   id="swap-button"
                   disabled={
-                    !isValid || approval !== ApprovalState.APPROVED || (priceImpactSeverity > 3 && !isExpertMode)
+                    !isValid || approval === ApprovalState.PENDING || (priceImpactSeverity > 3 && !isExpertMode)
                   }
                   error={isValid && priceImpactSeverity > 2}
                 >
                   <Text fontSize={16} fontWeight={500}>
                     {priceImpactSeverity > 3 && !isExpertMode
                       ? `Price Impact High`
-                      : `Swap${priceImpactSeverity > 2 ? ' Anyway' : ''}`}
+                      : `Swap${approval === ApprovalState.NOT_APPROVED ? ' and Approve' : ''}${
+                          priceImpactSeverity > 2 ? ' Anyway' : ''
+                        }`}
                   </Text>
                 </ButtonError>
               </RowBetween>
@@ -490,15 +523,17 @@ export default function Swap({ history }: RouteComponentProps) {
                   }
                 }}
                 id="swap-button"
-                disabled={!isValid || (priceImpactSeverity > 3 && !isExpertMode) || !!swapCallbackError}
-                error={isValid && priceImpactSeverity > 2 && !swapCallbackError}
+                disabled={!isValid || (priceImpactSeverity > 3 && !isExpertMode) || !!swapTransactionError}
+                error={isValid && priceImpactSeverity > 2 && !swapTransactionError}
               >
                 <Text fontSize={20} fontWeight={500}>
                   {swapInputError
                     ? swapInputError
                     : priceImpactSeverity > 3 && !isExpertMode
                     ? `Price Impact Too High`
-                    : `Swap${priceImpactSeverity > 2 ? ' Anyway' : ''}`}
+                    : `Swap${approval === ApprovalState.NOT_APPROVED ? ' and Approve' : ''}${
+                        priceImpactSeverity > 2 ? ' Anyway' : ''
+                      }`}
                 </Text>
               </ButtonError>
             )}
