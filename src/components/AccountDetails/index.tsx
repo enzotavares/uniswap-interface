@@ -299,29 +299,7 @@ export default function AccountDetails({
         <AccountSection>
           <YourAccount>
             <InfoCard>
-              <AccountGroupingRow>
-                {formatConnectorName()}
-                <div>
-                  {connector !== injected && connector !== walletlink && (
-                    <WalletAction
-                      style={{ fontSize: '.825rem', fontWeight: 400, marginRight: '8px' }}
-                      onClick={() => {
-                        ;(connector as any).close()
-                      }}
-                    >
-                      Disconnect
-                    </WalletAction>
-                  )}
-                  <WalletAction
-                    style={{ fontSize: '.825rem', fontWeight: 400 }}
-                    onClick={() => {
-                      openOptions()
-                    }}
-                  >
-                    Change
-                  </WalletAction>
-                </div>
-              </AccountGroupingRow>
+              <AccountGroupingRow>{formatConnectorName()}</AccountGroupingRow>
               <AccountGroupingRow id="web3-account-identifier-row">
                 <AccountControl>
                   {ENSName ? (
