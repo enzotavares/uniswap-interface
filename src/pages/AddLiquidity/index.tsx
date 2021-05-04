@@ -208,15 +208,20 @@ export default function AddLiquidity({
           }
         }
         txs.push(addLiquidityTx)
-        sdk.txs.send({ txs }).then(response => {
-          setAttemptingTxn(false)
-          setTxHash(response.safeTxHash)
-          ReactGA.event({
-            category: 'Liquidity',
-            action: 'Add',
-            label: [currencies[Field.CURRENCY_A]?.symbol, currencies[Field.CURRENCY_B]?.symbol].join('/')
+        sdk.txs
+          .send({ txs })
+          .then(response => {
+            setAttemptingTxn(false)
+            setTxHash(response.safeTxHash)
+            ReactGA.event({
+              category: 'Liquidity',
+              action: 'Add',
+              label: [currencies[Field.CURRENCY_A]?.symbol, currencies[Field.CURRENCY_B]?.symbol].join('/')
+            })
           })
-        })
+          .catch(() => {
+            setShowConfirm(false)
+          })
       })
       .catch(error => {
         setAttemptingTxn(false)

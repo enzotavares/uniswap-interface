@@ -287,10 +287,8 @@ export default function RemoveLiquidity({
             label: [currencyA?.symbol, currencyB?.symbol].join('/')
           })
         })
-        .catch((error: Error) => {
-          setAttemptingTxn(false)
-          // we only care if the error is something _other_ than the user rejected the tx
-          console.error(error)
+        .catch(() => {
+          setShowConfirm(false)
         })
     }
   }
