@@ -2,7 +2,6 @@ import { ChainId, Currency } from '@uniswap/sdk'
 import React, { useContext } from 'react'
 import styled, { ThemeContext } from 'styled-components'
 import Modal from '../Modal'
-import { ExternalLink } from '../../theme'
 import { Text } from 'rebass'
 import { CloseIcon, CustomLightSpinner } from '../../theme/components'
 import { RowBetween, RowFixed } from '../Row'
@@ -11,7 +10,6 @@ import { ButtonPrimary, ButtonLight } from '../Button'
 import { AutoColumn, ColumnCenter } from '../Column'
 import Circle from '../../assets/images/blue-loader.svg'
 import MetaMaskLogo from '../../assets/images/metamask.png'
-import { getEtherscanLink } from '../../utils'
 import { useActiveWeb3React } from '../../hooks'
 import useAddTokenToMetamask from 'hooks/useAddTokenToMetamask'
 
@@ -98,13 +96,9 @@ function TransactionSubmittedContent({
           <Text fontWeight={500} fontSize={20}>
             Transaction Submitted
           </Text>
-          {chainId && hash && (
-            <ExternalLink href={getEtherscanLink(chainId, hash, 'transaction')}>
-              <Text fontWeight={500} fontSize={14} color={theme.primary1}>
-                View on Etherscan
-              </Text>
-            </ExternalLink>
-          )}
+          <Text fontWeight={500} fontSize={14} color={theme.primary1}>
+            You can see your transaction in the safe <strong>Transactions</strong> section
+          </Text>
           {currencyToAdd && library?.provider?.isMetaMask && (
             <ButtonLight mt="12px" padding="6px 12px" width="fit-content" onClick={addToken}>
               {!success ? (

@@ -403,7 +403,9 @@ export default function AccountDetails({
         </LowerSection>
       ) : (
         <LowerSection>
-          <TYPE.body color={theme.text1}>Your transactions will appear here...</TYPE.body>
+          <TYPE.body color={theme.text1}>
+            You can see your transactions in the safe <strong>Transactions</strong> section
+          </TYPE.body>
         </LowerSection>
       )}
     </>
