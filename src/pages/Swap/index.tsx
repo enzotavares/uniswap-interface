@@ -224,11 +224,11 @@ export default function Swap({ history }: RouteComponentProps) {
       // If coin is not already approved we add it to the transaction batch
       if (approval === ApprovalState.NOT_APPROVED) {
         const approveTx = await createApproveTx()
-        txs.push(approveTx)
+        txs.push(approveTx as { to: string; value: string; data: string; gasLimit: string })
       }
       txs.push(swapTx)
       sdk.txs
-        .send({ txs: [swapTx] })
+        .send({ txs })
         .then(hash => {
           setSwapState({
             attemptingTxn: false,
