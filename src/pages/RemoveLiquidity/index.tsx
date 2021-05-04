@@ -1,6 +1,5 @@
 import { splitSignature } from '@ethersproject/bytes'
 import { Contract } from '@ethersproject/contracts'
-import { TransactionResponse } from '@ethersproject/providers'
 import { Currency, currencyEquals, ETHER, Percent, WETH } from '@uniswap/sdk'
 import React, { useCallback, useContext, useMemo, useState } from 'react'
 import { ArrowDown, Plus } from 'react-feather'
@@ -26,8 +25,6 @@ import { useCurrency } from '../../hooks/Tokens'
 import { usePairContract } from '../../hooks/useContract'
 import useIsArgentWallet from '../../hooks/useIsArgentWallet'
 import useTransactionDeadline from '../../hooks/useTransactionDeadline'
-
-import { useTransactionAdder } from '../../state/transactions/hooks'
 import { StyledInternalLink, TYPE } from '../../theme'
 import { calculateGasMargin, calculateSlippageAmount, getRouterContract } from '../../utils'
 import { currencyId } from '../../utils/currencyId'
@@ -35,7 +32,7 @@ import useDebouncedChangeHandler from '../../utils/useDebouncedChangeHandler'
 import { wrappedCurrency } from '../../utils/wrappedCurrency'
 import AppBody from '../AppBody'
 import { ClickableText, MaxButton, Wrapper } from '../Pool/styleds'
-import { useApproveCallback, ApprovalState } from '../../hooks/useApproveCallback'
+import { useApproveTransaction, ApprovalState } from '../../hooks/useApproveTransaction'
 import { Dots } from '../../components/swap/styleds'
 import { useBurnActionHandlers } from '../../state/burn/hooks'
 import { useDerivedBurnInfo, useBurnState } from '../../state/burn/hooks'
@@ -43,6 +40,8 @@ import { Field } from '../../state/burn/actions'
 import { useWalletModalToggle } from '../../state/application/hooks'
 import { useUserSlippageTolerance } from '../../state/user/hooks'
 import { BigNumber } from '@ethersproject/bignumber'
+import { useSafeAppsSDK } from '@gnosis.pm/safe-apps-react-sdk'
+import { useApproveCallback } from 'hooks/useApproveCallback'
 
 export default function RemoveLiquidity({
   history,
@@ -57,6 +56,7 @@ export default function RemoveLiquidity({
     currencyB,
     chainId
   ])
+  const { sdk } = useSafeAppsSDK()
 
   const theme = useContext(ThemeContext)
 
@@ -100,7 +100,8 @@ export default function RemoveLiquidity({
 
   // allowance handling
   const [signatureData, setSignatureData] = useState<{ v: number; r: string; s: string; deadline: number } | null>(null)
-  const [approval, approveCallback] = useApproveCallback(parsedAmounts[Field.LIQUIDITY], ROUTER_ADDRESS)
+  const [approval, approveTransaction] = useApproveTransaction(parsedAmounts[Field.LIQUIDITY], ROUTER_ADDRESS)
+  const approveCb = useApproveCallback(parsedAmounts[Field.LIQUIDITY], ROUTER_ADDRESS)
 
   const isArgentWallet = useIsArgentWallet()
 
@@ -110,7 +111,7 @@ export default function RemoveLiquidity({
     if (!liquidityAmount) throw new Error('missing liquidity amount')
 
     if (isArgentWallet) {
-      return approveCallback()
+      return approveCb[1]()
     }
 
     // try to gather a signature for permission
@@ -166,7 +167,7 @@ export default function RemoveLiquidity({
       .catch(error => {
         // for all errors other than 4001 (EIP-1193 user rejected request), fall back to manual approve
         if (error?.code !== 4001) {
-          approveCallback()
+          approveCb[1]()
         }
       })
   }
@@ -190,8 +191,6 @@ export default function RemoveLiquidity({
     onUserInput
   ])
 
-  // tx sending
-  const addTransaction = useTransactionAdder()
   async function onRemove() {
     if (!chainId || !library || !account || !deadline) throw new Error('missing dependencies')
     const { [Field.CURRENCY_A]: currencyAmountA, [Field.CURRENCY_B]: currencyAmountB } = parsedAmounts
@@ -215,71 +214,29 @@ export default function RemoveLiquidity({
     if (!tokenA || !tokenB) throw new Error('could not wrap')
 
     let methodNames: string[], args: Array<string | string[] | number | boolean>
-    // we have approval, use normal remove liquidity
-    if (approval === ApprovalState.APPROVED) {
-      // removeLiquidityETH
-      if (oneCurrencyIsETH) {
-        methodNames = ['removeLiquidityETH', 'removeLiquidityETHSupportingFeeOnTransferTokens']
-        args = [
-          currencyBIsETH ? tokenA.address : tokenB.address,
-          liquidityAmount.raw.toString(),
-          amountsMin[currencyBIsETH ? Field.CURRENCY_A : Field.CURRENCY_B].toString(),
-          amountsMin[currencyBIsETH ? Field.CURRENCY_B : Field.CURRENCY_A].toString(),
-          account,
-          deadline.toHexString()
-        ]
-      }
-      // removeLiquidity
-      else {
-        methodNames = ['removeLiquidity']
-        args = [
-          tokenA.address,
-          tokenB.address,
-          liquidityAmount.raw.toString(),
-          amountsMin[Field.CURRENCY_A].toString(),
-          amountsMin[Field.CURRENCY_B].toString(),
-          account,
-          deadline.toHexString()
-        ]
-      }
+    if (oneCurrencyIsETH) {
+      methodNames = ['removeLiquidityETH', 'removeLiquidityETHSupportingFeeOnTransferTokens']
+      args = [
+        currencyBIsETH ? tokenA.address : tokenB.address,
+        liquidityAmount.raw.toString(),
+        amountsMin[currencyBIsETH ? Field.CURRENCY_A : Field.CURRENCY_B].toString(),
+        amountsMin[currencyBIsETH ? Field.CURRENCY_B : Field.CURRENCY_A].toString(),
+        account,
+        deadline.toHexString()
+      ]
     }
-    // we have a signataure, use permit versions of remove liquidity
-    else if (signatureData !== null) {
-      // removeLiquidityETHWithPermit
-      if (oneCurrencyIsETH) {
-        methodNames = ['removeLiquidityETHWithPermit', 'removeLiquidityETHWithPermitSupportingFeeOnTransferTokens']
-        args = [
-          currencyBIsETH ? tokenA.address : tokenB.address,
-          liquidityAmount.raw.toString(),
-          amountsMin[currencyBIsETH ? Field.CURRENCY_A : Field.CURRENCY_B].toString(),
-          amountsMin[currencyBIsETH ? Field.CURRENCY_B : Field.CURRENCY_A].toString(),
-          account,
-          signatureData.deadline,
-          false,
-          signatureData.v,
-          signatureData.r,
-          signatureData.s
-        ]
-      }
-      // removeLiquidityETHWithPermit
-      else {
-        methodNames = ['removeLiquidityWithPermit']
-        args = [
-          tokenA.address,
-          tokenB.address,
-          liquidityAmount.raw.toString(),
-          amountsMin[Field.CURRENCY_A].toString(),
-          amountsMin[Field.CURRENCY_B].toString(),
-          account,
-          signatureData.deadline,
-          false,
-          signatureData.v,
-          signatureData.r,
-          signatureData.s
-        ]
-      }
-    } else {
-      throw new Error('Attempting to confirm without approval or a signature. Please contact support.')
+    // removeLiquidity
+    else {
+      methodNames = ['removeLiquidity']
+      args = [
+        tokenA.address,
+        tokenB.address,
+        liquidityAmount.raw.toString(),
+        amountsMin[Field.CURRENCY_A].toString(),
+        amountsMin[Field.CURRENCY_B].toString(),
+        account,
+        deadline.toHexString()
+      ]
     }
 
     const safeGasEstimates: (BigNumber | undefined)[] = await Promise.all(
@@ -303,28 +260,27 @@ export default function RemoveLiquidity({
     } else {
       const methodName = methodNames[indexOfSuccessfulEstimation]
       const safeGasEstimate = safeGasEstimates[indexOfSuccessfulEstimation]
-
+      const functionCall = router.interface.encodeFunctionData(methodName, args)
+      const removeLiquidity = {
+        to: router.address,
+        value: '0',
+        data: functionCall,
+        gasLimit: calculateGasMargin(safeGasEstimate as BigNumber).toString()
+      }
+      const txs = []
+      if (approval) {
+        const approvalTx = await approveTransaction()
+        if (approvalTx) {
+          txs.push(approvalTx)
+        }
+      }
+      txs.push(removeLiquidity)
       setAttemptingTxn(true)
-      await router[methodName](...args, {
-        gasLimit: safeGasEstimate
-      })
-        .then((response: TransactionResponse) => {
+      sdk.txs
+        .send({ txs })
+        .then(response => {
           setAttemptingTxn(false)
-
-          addTransaction(response, {
-            summary:
-              'Remove ' +
-              parsedAmounts[Field.CURRENCY_A]?.toSignificant(3) +
-              ' ' +
-              currencyA?.symbol +
-              ' and ' +
-              parsedAmounts[Field.CURRENCY_B]?.toSignificant(3) +
-              ' ' +
-              currencyB?.symbol
-          })
-
-          setTxHash(response.hash)
-
+          setTxHash(response.safeTxHash)
           ReactGA.event({
             category: 'Liquidity',
             action: 'Remove',
@@ -408,7 +364,7 @@ export default function RemoveLiquidity({
             </RowBetween>
           </>
         )}
-        <ButtonPrimary disabled={!(approval === ApprovalState.APPROVED || signatureData !== null)} onClick={onRemove}>
+        <ButtonPrimary onClick={onRemove}>
           <Text fontWeight={500} fontSize={20}>
             Confirm
           </Text>
@@ -679,11 +635,11 @@ export default function RemoveLiquidity({
                     onClick={() => {
                       setShowConfirm(true)
                     }}
-                    disabled={!isValid || (signatureData === null && approval !== ApprovalState.APPROVED)}
+                    disabled={!isValid}
                     error={!isValid && !!parsedAmounts[Field.CURRENCY_A] && !!parsedAmounts[Field.CURRENCY_B]}
                   >
                     <Text fontSize={16} fontWeight={500}>
-                      {error || 'Remove'}
+                      {error || (approval !== ApprovalState.APPROVED ? 'Approve & Remove' : 'Remove')}
                     </Text>
                   </ButtonError>
                 </RowBetween>

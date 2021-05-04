@@ -3,6 +3,7 @@ import { BigNumber } from '@ethersproject/bignumber'
 import { Currency, currencyEquals, ETHER, TokenAmount, WETH } from '@uniswap/sdk'
 import React, { useCallback, useContext, useState } from 'react'
 import { Plus } from 'react-feather'
+import ReactGA from 'react-ga'
 import { RouteComponentProps } from 'react-router-dom'
 import { Text } from 'rebass'
 import { ThemeContext } from 'styled-components'
@@ -187,7 +188,7 @@ export default function AddLiquidity({
           currencyA === ETHER || currencyB === ETHER ? 'addLiquidityETH' : 'addLiquidity',
           args
         )
-        const swapTx = {
+        const addLiquidityTx = {
           to: router.address,
           value: value ? value.toString() : '0',
           data: functionCall,
@@ -206,9 +207,15 @@ export default function AddLiquidity({
             txs.push(approvalTx)
           }
         }
-        txs.push(swapTx)
-        sdk.txs.send({ txs }).then(() => {
+        txs.push(addLiquidityTx)
+        sdk.txs.send({ txs }).then(response => {
           setAttemptingTxn(false)
+          setTxHash(response.safeTxHash)
+          ReactGA.event({
+            category: 'Liquidity',
+            action: 'Add',
+            label: [currencies[Field.CURRENCY_A]?.symbol, currencies[Field.CURRENCY_B]?.symbol].join('/')
+          })
         })
       })
       .catch(error => {

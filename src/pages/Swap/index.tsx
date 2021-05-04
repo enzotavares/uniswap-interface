@@ -19,6 +19,8 @@ import TradePrice from '../../components/swap/TradePrice'
 import TokenWarningModal from '../../components/TokenWarningModal'
 import ProgressSteps from '../../components/ProgressSteps'
 import SwapHeader from '../../components/swap/SwapHeader'
+import ReactGA from 'react-ga'
+import { getTradeVersion } from '../../data/V1'
 
 import { INITIAL_ALLOWED_SLIPPAGE } from '../../constants'
 import { useActiveWeb3React } from '../../hooks'
@@ -236,6 +238,25 @@ export default function Swap({ history }: RouteComponentProps) {
             showConfirm,
             swapErrorMessage: undefined,
             txHash: hash.safeTxHash
+          })
+          ReactGA.event({
+            category: 'Swap',
+            action:
+              recipient === null
+                ? 'Swap w/o Send'
+                : (recipientAddress ?? recipient) === account
+                ? 'Swap w/o Send + recipient'
+                : 'Swap w/ Send',
+            label: [
+              trade?.inputAmount?.currency?.symbol,
+              trade?.outputAmount?.currency?.symbol,
+              getTradeVersion(trade)
+            ].join('/')
+          })
+
+          ReactGA.event({
+            category: 'Routing',
+            action: singleHopOnly ? 'Swap with multihop disabled' : 'Swap with multihop enabled'
           })
         })
         .catch(error => {
