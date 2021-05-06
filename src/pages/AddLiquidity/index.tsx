@@ -128,13 +128,17 @@ export default function AddLiquidity({
   const handleApproveA = useCallback(async () => {
     const approveTx = await approveATransaction()
     if (approveTx) {
-      sdk.txs.send({ txs: [approveTx] })
+      sdk.txs.send({ txs: [approveTx] }).catch(() => {
+        setShowConfirm(false)
+      })
     }
   }, [approveATransaction, sdk.txs])
   const handleApproveB = useCallback(async () => {
     const approveTx = await approveBTransaction()
     if (approveTx) {
-      sdk.txs.send({ txs: [approveTx] })
+      sdk.txs.send({ txs: [approveTx] }).catch(() => {
+        setShowConfirm(false)
+      })
     }
   }, [approveBTransaction, sdk.txs])
   // const addTransaction = useTransactionAdder()

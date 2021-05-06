@@ -111,7 +111,14 @@ export default function RemoveLiquidity({
     if (!liquidityAmount) throw new Error('missing liquidity amount')
 
     if (isArgentWallet) {
-      return approveCb[1]()
+      approveCb[1]()
+        .then(() => {
+          return
+        })
+        .catch(() => {
+          setShowConfirm(false)
+          return
+        })
     }
 
     // try to gather a signature for permission
@@ -168,6 +175,13 @@ export default function RemoveLiquidity({
         // for all errors other than 4001 (EIP-1193 user rejected request), fall back to manual approve
         if (error?.code !== 4001) {
           approveCb[1]()
+            .then(() => {
+              return
+            })
+            .catch(() => {
+              setShowConfirm(false)
+              return
+            })
         }
       })
   }
