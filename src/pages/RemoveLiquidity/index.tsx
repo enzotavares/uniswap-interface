@@ -302,7 +302,7 @@ export default function RemoveLiquidity({
           })
         })
         .catch(() => {
-          setShowConfirm(false)
+          setAttemptingTxn(false)
         })
     }
   }

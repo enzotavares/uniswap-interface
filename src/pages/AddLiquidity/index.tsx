@@ -224,7 +224,7 @@ export default function AddLiquidity({
             })
           })
           .catch(() => {
-            setShowConfirm(false)
+            setAttemptingTxn(false)
           })
       })
       .catch(error => {
