@@ -5,8 +5,8 @@ import { Text } from 'rebass'
 import { ThemeContext } from 'styled-components'
 import AddressInputPanel from '../../components/AddressInputPanel'
 import { ButtonError, ButtonLight, ButtonPrimary, ButtonConfirmed } from '../../components/Button'
-import Card, { GreyCard } from '../../components/Card'
-import Column, { AutoColumn } from '../../components/Column'
+import Card, { BlueCard, GreyCard } from '../../components/Card'
+import Column, { AutoColumn, ColumnCenter } from '../../components/Column'
 import ConfirmSwapModal from '../../components/swap/ConfirmSwapModal'
 import CurrencyInputPanel from '../../components/CurrencyInputPanel'
 import { SwapPoolTabs } from '../../components/NavigationTabs'
@@ -354,8 +354,18 @@ export default function Swap({ history }: RouteComponentProps) {
             swapErrorMessage={swapErrorMessage}
             onDismiss={handleConfirmDismiss}
           />
-
           <AutoColumn gap={'md'}>
+            <ColumnCenter>
+              <BlueCard>
+                <AutoColumn gap="10px">
+                  <TYPE.link fontWeight={400} color={'primaryText1'}>
+                    <b>Warning:</b> If the Safe&apos;s threshold is higher than 1, the price may change above the
+                    slippage in the meantime the transaction is confirmed by all owners, causing the transaction to be
+                    reverted.
+                  </TYPE.link>
+                </AutoColumn>
+              </BlueCard>
+            </ColumnCenter>
             <CurrencyInputPanel
               label={independentField === Field.OUTPUT && !showWrap && trade ? 'From (estimated)' : 'From'}
               value={formattedAmounts[Field.INPUT]}

@@ -96,7 +96,7 @@ function TransactionSubmittedContent({
           <Text fontWeight={500} fontSize={20}>
             Transaction Submitted
           </Text>
-          <Text fontWeight={500} fontSize={14} color={theme.primary1}>
+          <Text textAlign="center" fontWeight={500} fontSize={14} color={theme.primary1}>
             You can see your transaction in the safe <strong>Transactions</strong> section
           </Text>
           {currencyToAdd && library?.provider?.isMetaMask && (

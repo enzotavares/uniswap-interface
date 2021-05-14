@@ -1,7 +1,8 @@
 {
-  "background_color": "#fff",
-  "display": "standalone",
-  "homepage_url": "https://app.uniswap.org",
+  "short_name": "Uniswap V2 Safe App",
+  "name": "Uniswap V2",
+  "description": "Uniswap V2 interface for Gnosis Safe",
+  "iconPath": "favicon.png",
   "icons": [
     {
       "src": "./images/192x192_App_Icon.png",
@@ -16,9 +17,8 @@
       "purpose": "any maskable"
     }
   ],
-  "orientation": "portrait",
-  "name": "Uniswap",
-  "short_name": "Uniswap",
   "start_url": ".",
-  "theme_color": "#ff007a"
+  "display": "standalone",
+  "theme_color": "#ff007a",
+  "background_color": "#ffffff"
 }
